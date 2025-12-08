@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pose Detection Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: #E5E7EB;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .title {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 700;
+            color: #2DD4BF;
+            margin-bottom: 20px;
+        }
+        
+        .demo-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            margin: 0 auto;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px solid #2DD4BF;
+        }
+        
+        #demoVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #demoCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #2DD4BF, #0D9488);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        
+        .info {
+            background: rgba(17, 24, 39, 0.6);
+            padding: 20px;
+            border-radius: 16px;
+            margin-top: 20px;
+        }
+        
+        .pose-info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #9CA3AF;
+        }
+        
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(17, 24, 39, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">POSE DETECTION DEMO</h1>
+        
+        <div class="status" id="status">Click "Start Camera" to begin pose detection</div>
+        
+        <div class="demo-container">
+            <video id="demoVideo" autoplay playsinline></video>
+            <canvas id="demoCanvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button class="button" onclick="startDemo()">Start Camera</button>
+            <button class="button" onclick="stopDemo()">Stop Camera</button>
+        </div>
+        
+        <div class="info">
+            <h3>Pose Detection Status</h3>
+            <div class="pose-info" id="poseInfo">
+                No pose detected yet. Stand in front of the camera and make sure you're well-lit.
+            </div>
+            
+            <h3>Test Movements</h3>
+            <ul>
+                <li>Raise both arms to test "ARMS_UP" detection</li>
+                <li>Extend left or right arm to test "ARM_EXTENDED" detection</li>
+                <li>Jump to test "JUMP" detection</li>
+                <li>Turn your head to test "TURN" detection</li>
+                <li>Clap hands to test "CLAP" detection</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let pose = null;
+        let camera = null;
+        let canvas = null;
+        let ctx = null;
+        let video = null;
+        let poseDetector = null;
+        let isRunning = false;
+
+        // Initialize pose detection
+        function initPoseDetection() {
+            canvas = document.getElementById('demoCanvas');
+            ctx = canvas.getContext('2d');
+            video = document.getElementById('demoVideo');
+            
+            canvas.width = 640;
+            canvas.height = 480;
+
+            pose = new Pose.Pose({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+                }
+            });
+            
+            pose.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                smoothSegmentation: false,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            pose.onResults(onResults);
+
+            camera = new Camera(video, {
+                onFrame: async () => {
+                    await pose.send({ image: video });
+                },
+                width: 640,
+                height: 480
+            });
+        }
+
+        function onResults(results) {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw video frame
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            if (results.poseLandmarks) {
+                // Draw pose landmarks
+                drawConnectors(ctx, results.poseLandmarks, Pose.POSE_CONNECTIONS, {
+                    color: '#2DD4BF',
+                    lineWidth: 2
+                });
+                
+                drawLandmarks(ctx, results.poseLandmarks, {
+                    color: '#99f6e4',
+                    lineWidth: 1
+                });
+                
+                // Analyze pose
+                analyzePose(results.poseLandmarks);
+            }
+        }
+
+        function analyzePose(landmarks) {
+            const info = document.getElementById('poseInfo');
+            const status = document.getElementById('status');
+            
+            if (landmarks.length >= 33) {
+                const leftWrist = landmarks[15];
+                const rightWrist = landmarks[16];
+                const leftShoulder = landmarks[11];
+                const rightShoulder = landmarks[12];
+                const leftHip = landmarks[23];
+                const rightHip = landmarks[24];
+                const nose = landmarks[0];
+                
+                let detectedPose = "Standing";
+                
+                // Check for arms up
+                if (leftWrist.y < leftShoulder.y - 0.1 && rightWrist.y < rightShoulder.y - 0.1) {
+                    detectedPose = "ARMS UP";
+                }
+                // Check for left arm extended
+                else if (leftWrist.x < leftShoulder.x - 0.15) {
+                    detectedPose = "LEFT ARM EXTENDED";
+                }
+                // Check for right arm extended
+                else if (rightWrist.x > rightShoulder.x + 0.15) {
+                    detectedPose = "RIGHT ARM EXTENDED";
+                }
+                // Check for jump (ankles below hips)
+                else if (landmarks[27].y < leftHip.y - 0.2 && landmarks[28].y < rightHip.y - 0.2) {
+                    detectedPose = "JUMPING";
+                }
+                // Check for turn
+                else {
+                    const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
+                    const turnAngle = Math.atan2(nose.x - shoulderCenterX, nose.y - leftShoulder.y);
+                    if (Math.abs(turnAngle) > 0.5) {
+                        detectedPose = "TURNING";
+                    }
+                }
+                
+                info.innerHTML = `
+                    <strong>Detected Pose:</strong> ${detectedPose}<br>
+                    <strong>Confidence:</strong> High<br>
+                    <strong>Landmarks:</strong> ${landmarks.length} points detected
+                `;
+                
+                status.innerHTML = "✅ Pose detection active";
+                status.style.background = "rgba(52, 211, 153, 0.2)";
+                status.style.color = "#34D399";
+            } else {
+                info.innerHTML = "No pose detected. Make sure you're in frame and well-lit.";
+                status.innerHTML = "⚠️ No pose detected";
+                status.style.background = "rgba(248, 113, 113, 0.2)";
+                status.style.color = "#F87171";
+            }
+        }
+
+        async function startDemo() {
+            if (isRunning) return;
+            
+            try {
+                document.getElementById('status').innerHTML = "🔄 Starting camera...";
+                
+                if (!pose) {
+                    initPoseDetection();
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                camera.start();
+                
+                isRunning = true;
+                document.getElementById('status').innerHTML = "✅ Camera started - pose detection active";
+                document.getElementById('status').style.background = "rgba(52, 211, 153, 0.2)";
+                document.getElementById('status').style.color = "#34D399";
+                
+            } catch (error) {
+                console.error('Error starting camera:', error);
+                document.getElementById('status').innerHTML = "❌ Camera access denied or failed";
+                document.getElementById('status').style.background = "rgba(248, 113, 113, 0.2)";
+                document.getElementById('status').style.color = "#F87171";
+            }
+        }
+
+        function stopDemo() {
+            if (!isRunning) return;
+            
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            
+            camera.stop();
+            isRunning = false;
+            
+            document.getElementById('status').innerHTML = "⏹️ Camera stopped";
+            document.getElementById('status').style.background = "rgba(156, 163, 175, 0.2)";
+            document.getElementById('status').style.color = "#9CA3AF";
+        }
+
+        // Initialize when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            initPoseDetection();
+        });
+    </script>
+</body>
+</html>

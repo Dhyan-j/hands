@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Rhythm Dance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #000000;
+            color: #E5E7EB;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: #000000;
+        }
+
+        #cameraFeed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .ui-panel {
+            position: absolute;
+            background: rgba(17, 24, 39, 0.6);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 24px;
+            z-index: 10;
+        }
+
+        .song-info {
+            top: 32px;
+            left: 32px;
+            min-width: 280px;
+        }
+
+        .score-display {
+            top: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(20px);
+            padding: 16px 32px;
+            border-radius: 16px;
+            text-align: center;
+            min-width: 200px;
+        }
+
+        .progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 8px;
+            background: rgba(17, 24, 39, 0.6);
+            z-index: 9;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2DD4BF, #99f6e4);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .pose-timeline {
+            position: absolute;
+            right: 32px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 120px;
+            height: 400px;
+            z-index: 10;
+        }
+
+        .hit-zone {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 128px;
+            height: 128px;
+            border: 3px solid #2DD4BF;
+            border-radius: 50%;
+            opacity: 0.7;
+        }
+
+        .pose-prompt {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            border: 2px solid #2DD4BF;
+            border-radius: 12px;
+            background: rgba(17, 24, 39, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #2DD4BF;
+            font-weight: 600;
+        }
+
+        .feedback-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: 800;
+            font-style: italic;
+            opacity: 0;
+            z-index: 20;
+            text-align: center;
+        }
+
+        .feedback-text.show {
+            animation: feedbackPulse 0.6s ease-out;
+        }
+
+        @keyframes feedbackPulse {
+            0% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.8); 
+            }
+            20% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1.2); 
+            }
+            80% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            100% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+        }
+
+        .start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .start-title {
+            font-size: 64px;
+            font-weight: 700;
+            color: #2DD4BF;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .start-subtitle {
+            font-size: 24px;
+            color: #9CA3AF;
+            margin-bottom: 48px;
+            text-align: center;
+        }
+
+        .start-button {
+            background: linear-gradient(135deg, #2DD4BF, #0D9488);
+            color: white;
+            border: none;
+            padding: 16px 48px;
+            font-size: 20px;
+            font-weight: 600;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .start-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 24px rgba(45, 212, 191, 0.5);
+        }
+
+        .countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 96px;
+            font-weight: 700;
+            color: #2DD4BF;
+            z-index: 30;
+            opacity: 0;
+        }
+
+        .countdown.show {
+            animation: countdownPulse 1s ease-out;
+        }
+
+        @keyframes countdownPulse {
+            0% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(0.5); 
+            }
+            50% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1.2); 
+            }
+            100% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        @media (max-width: 768px) {
+            .start-title {
+                font-size: 48px;
+            }
+            
+            .feedback-text {
+                font-size: 36px;
+            }
+            
+            .countdown {
+                font-size: 72px;
+            }
+            
+            .pose-timeline {
+                right: 16px;
+                width: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <video id="cameraFeed" autoplay playsinline></video>
+        <canvas id="gameCanvas"></canvas>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        
+        <div class="ui-panel song-info">
+            <h2 id="songTitle">Cyber Beats</h2>
+            <p id="artistName">Electronic Dance Mix</p>
+        </div>
+        
+        <div class="score-display">
+            <div id="score">0</div>
+        </div>
+        
+        <div class="pose-timeline">
+            <div class="hit-zone"></div>
+        </div>
+        
+        <div class="feedback-text" id="feedbackText"></div>
+        
+        <div class="countdown" id="countdown"></div>
+        
+        <div class="start-screen" id="startScreen">
+            <h1 class="start-title">CYBER RHYTHM DANCE</h1>
+            <p class="start-subtitle">Move your body to the beat! Follow the on-screen prompts.</p>
+            <button class="start-button" onclick="startGame()">START DANCING</button>
+        </div>
+    </div>
+
+    <script src="dance-game.js"></script>
+</body>
+</html>
